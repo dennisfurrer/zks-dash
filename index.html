@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>zkSync Farm Dashboard</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #f4f7f6;
+        color: #333;
+      }
+      .header {
+        background-color: #fff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        position: fixed;
+        width: 100%;
+        height: 5%;
+        z-index: 1000;
+        padding: 10px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .logo {
+        font-size: 20px;
+        font-weight: bold;
+        color: #333;
+      }
+      .navigation {
+        font-size: 16px;
+        padding-right: 20px; /* Aligns with the logo padding */
+      }
+      .container {
+        display: flex;
+        padding-top: 60px;
+      }
+      .sidebar {
+        width: 300px;
+        border-right: 1px solid #ccc;
+        padding: 20px;
+        height: calc(100vh - 60px);
+        overflow-y: auto;
+        position: fixed;
+      }
+
+      .main-content {
+        flex-grow: 1;
+        padding: 20px;
+        margin-left: 360px;
+      }
+
+      .wallet {
+        cursor: pointer;
+        padding: 10px;
+        margin-bottom: 10px;
+        background-color: #fff;
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        transition: background-color 0.3s;
+        word-break: break-all; /* This will ensure the address doesn't overflow the container */
+      }
+      .wallet:hover {
+        background-color: #c1c1c1;
+      }
+      .metric {
+        background-color: #fff;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .metric-title {
+        font-size: 18px;
+        color: #555;
+        margin-bottom: 5px;
+      }
+      .metric-value {
+        font-size: 16px;
+        color: #333;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="logo" onclick="location.reload()" style="cursor: pointer">
+        zkSync Farm Dashboard
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="sidebar" id="walletList"></div>
+      <div class="main-content" id="mainContent">
+        <!-- Metrics and graphs will be inserted here -->
+      </div>
+    </div>
+
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js"></script>
+    <script>
+      const walletsParam = new URLSearchParams(window.location.search).get(
+        "wallets"
+      );
+      const wallets = walletsParam ? walletsParam.split(",") : [];
+
+      function updateMainContent(content) {
+        document.getElementById("mainContent").innerHTML = content;
+      }
+
+      function createMetricElement(title, value, valueClass = "") {
+        return `
+        <div class="metric">
+          <div class="metric-title">${title}</div>
+          <div class="metric-value ${valueClass}">${value}</div>
+        </div>
+      `;
+      }
+
+      function showOverallMetrics() {
+        const metricsHtml = `
+        <h2>Farm Metrics</h2>
+        ${createMetricElement(
+          "Fully Active Since",
+          "Loading...",
+          "farm-fully-active-since-value"
+        )}
+        ${createMetricElement(
+          "Transaction Count",
+          "Loading...",
+          "farm-transaction-count-value"
+        )}
+        ${createMetricElement(
+          "Total Volume (ETH)",
+          "Loading...",
+          "farm-total-volume-value"
+        )}
+        ${createMetricElement(
+          "Total Fees (ETH)",
+          "Loading...",
+          "farm-total-fees-value"
+        )}
+      `;
+        updateMainContent(metricsHtml);
+      }
+
+      async function showWalletMetrics(walletAddress) {
+        const walletData = await getWalletData(walletAddress);
+
+        updateMainContent(`
+                <h2>Metrics for ${walletAddress}</h2>
+                ${createMetricElement("Active Since", walletData.activeSince)}
+                ${createMetricElement("Last Active", walletData.lastActive)}
+        ${createMetricElement(
+          "Transaction Count",
+          walletData.transactionCount,
+          "wallet-transaction-count-value"
+        )}
+        ${createMetricElement(
+          "Total Volume (ETH)",
+          walletData.volume,
+          "wallet-total-volume-value"
+        )}
+        ${createMetricElement(
+          "Total Fees (ETH)",
+          walletData.fees,
+          "wallet-total-fees-value"
+        )}
+        ${createMetricElement(
+          "Largest Transaction (ETH)",
+          walletData.largestTransaction
+        )}
+        ${createMetricElement(
+          "# Smart Contracts Interacted With",
+          walletData.smartContractsInteractedWith
+        )}
+        ${createMetricElement("# Days Active", walletData.daysActive)}
+            `);
+      }
+
+      async function getWalletData(walletAddress) {
+        let transactions = [];
+        let totalVolume = ethers.BigNumber.from(0);
+        let fees = ethers.BigNumber.from(0);
+        let largestTransaction = ethers.BigNumber.from(0);
+        let activeSince = new Date();
+        let lastActive = new Date("01/01/2020");
+        let smartContractsInteractedWith = [];
+
+        let page = 1;
+        const offset = 100; // Number of transactions per page
+        let transactionsExist = true;
+
+        while (transactionsExist) {
+          const url = `https://block-explorer-api.mainnet.zksync.io/api?module=account&action=txlist&page=${page}&offset=${offset}&sort=asc&endblock=99999999&startblock=0&address=${walletAddress}`;
+          const response = await fetch(url);
+          const data = await response.json();
+
+          // Check if there are transactions returned by the API
+          if (data.result && data.result.length > 0) {
+            data.result.forEach((tx) => {
+              // Make sure to only add up transactions that were successful (isError: "0")
+              if (tx.isError === "0") {
+                // Add to total volume if this is an incoming transaction
+                totalVolume = totalVolume.add(ethers.BigNumber.from(tx.value));
+
+                // Check if wallet is tx sender (for fee counting & date counting)
+                if (tx.from.toLowerCase() === walletAddress.toLowerCase()) {
+                  fees = fees.add(ethers.BigNumber.from(tx.fee));
+                  transactions.push(tx);
+                }
+
+                // Check if this transaction is the largest so far
+                if (
+                  ethers.utils.formatEther(tx.value) >
+                  ethers.utils.formatEther(largestTransaction)
+                ) {
+                  largestTransaction = tx.value;
+                }
+                // Check if this transaction is the earliest so far
+                if (
+                  new Date(tx.timeStamp * 1000) < activeSince &&
+                  tx.from.toLowerCase() === walletAddress.toLowerCase()
+                ) {
+                  activeSince = new Date(tx.timeStamp * 1000);
+                }
+                // Check if this transaction is an interaction with a new smart contract
+                if (
+                  tx.from.toLowerCase() === walletAddress.toLowerCase() &&
+                  tx.type === "2" &&
+                  tx.methodId !== "0x"
+                ) {
+                  smartContractsInteractedWith.push(tx.to.toLowerCase());
+                }
+                //
+                if (
+                  new Date(tx.timeStamp * 1000) > lastActive &&
+                  tx.from.toLowerCase() === walletAddress.toLowerCase()
+                ) {
+                  lastActive = new Date(tx.timeStamp * 1000);
+                }
+              }
+            });
+            page++; // Go to the next page
+          } else {
+            transactionsExist = false; // No more transactions, exit the loop
+          }
+        }
+
+        // Create an object with dates as keys
+        const dateGroups = transactions.reduce((dateGroups, tx) => {
+          const date = new Date(tx.timeStamp * 1000).toLocaleDateString();
+          if (!dateGroups[date]) {
+            dateGroups[date] = [];
+          }
+          dateGroups[date].push(tx);
+          return dateGroups;
+        }, {});
+        const txsGroupedByDay = Object.keys(dateGroups).map((date) => {
+          return {
+            date,
+            transactions: dateGroups[date],
+          };
+        });
+
+        return {
+          transactionCount: transactions.length,
+          volume: ethers.utils.formatEther(totalVolume),
+          fees: ethers.utils.formatEther(fees),
+          largestTransaction: ethers.utils.formatEther(largestTransaction),
+          activeSince: activeSince.toLocaleDateString(),
+          lastActive: lastActive.toLocaleDateString(),
+          smartContractsInteractedWith: new Set(smartContractsInteractedWith)
+            .size,
+          daysActive: txsGroupedByDay.length,
+        };
+      }
+
+      async function calculateFarmData(wallets) {
+        const walletDatas = await Promise.all(
+          wallets.map((wallet) => getWalletData(wallet))
+        );
+        let totalTransactionCount = 0;
+        let totalVolume = ethers.BigNumber.from(0);
+        let totalFees = ethers.BigNumber.from(0);
+        let fullyActiveSince = walletDatas[0].activeSince;
+        // find the latest date across each of the wallets
+        walletDatas.forEach((walletData) => {
+          totalTransactionCount += walletData.transactionCount;
+          totalVolume = totalVolume.add(
+            ethers.utils.parseEther(walletData.volume)
+          );
+          totalFees = totalFees.add(ethers.utils.parseEther(walletData.fees));
+          // find the latest activeSince date across each of the wallets
+          fullyActiveSince =
+            walletData.activeSince > fullyActiveSince
+              ? walletData.activeSince
+              : fullyActiveSince;
+          //   fullyActiveSince = walletData.activeSince <
+        });
+        return {
+          totalTransactionCount: totalTransactionCount,
+          totalVolume: ethers.utils.formatEther(totalVolume),
+          totalFees: ethers.utils.formatEther(totalFees),
+          fullyActiveSince: fullyActiveSince,
+        };
+      }
+
+      // Update your init function to include the calculation for the transaction count
+      async function init() {
+        const walletListElement = document.getElementById("walletList");
+        wallets.forEach((wallet) => {
+          const walletElement = document.createElement("div");
+          walletElement.classList.add("wallet");
+          walletElement.textContent = wallet;
+          walletElement.onclick = async () => await showWalletMetrics(wallet);
+          walletListElement.appendChild(walletElement);
+        });
+
+        // Calculate the total volume and update the UI accordingly
+        calculateFarmData(wallets).then((farmData) => {
+          document.querySelector(
+            ".farm-transaction-count-value"
+          ).textContent = `${farmData.totalTransactionCount}`;
+          document.querySelector(
+            ".farm-total-volume-value"
+          ).textContent = `${farmData.totalVolume}`;
+          document.querySelector(
+            ".farm-total-fees-value"
+          ).textContent = `${farmData.totalFees}`;
+          document.querySelector(
+            ".farm-fully-active-since-value"
+          ).textContent = `${farmData.fullyActiveSince}`;
+        });
+
+        showOverallMetrics();
+      }
+
+      init();
+    </script>
+  </body>
+</html>
