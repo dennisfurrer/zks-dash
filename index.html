@@ -56,7 +56,7 @@
         cursor: pointer;
         padding: 10px;
         margin-bottom: 10px;
-        background-color: #fff;
+        background-color: #dddddd;
         border-radius: 5px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         transition: background-color 0.3s;
@@ -81,10 +81,82 @@
         font-size: 16px;
         color: #333;
       }
+
+      .header .logo {
+        margin: 0 auto; /* Centers the logo */
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+      }
+
+      .burger {
+        display: none; /* Hide by default, will be displayed in mobile view */
+        cursor: pointer;
+        flex-direction: column;
+        justify-content: space-around;
+        width: 2rem; /* Set a specific width */
+        height: 2rem; /* Set a specific height */
+        z-index: 2000; /* Higher z-index to ensure visibility */
+        background-color: transparent; /* Set a background color for visibility */
+      }
+
+      .burger div {
+        width: 2rem;
+        height: 0.25rem;
+        background-color: black; /* Set a color that contrasts with the header */
+        border-radius: 10px;
+        transition: all 0.3s linear;
+        position: relative;
+        transform-origin: 1px;
+      }
+
+      @media (max-width: 768px) {
+        .burger {
+          display: flex; /* Make the burger menu visible in mobile view */
+        }
+
+        .header {
+          justify-content: space-between; /* Adjust the spacing to distribute header content */
+          padding-left: 10px; /* Ensure padding is consistent */
+          padding-right: 10px;
+        }
+
+        .logo {
+          position: static; /* Remove absolute positioning on mobile */
+          margin: 0 auto; /* Center the logo text */
+          flex: 1; /* Allow the logo to take up space for centering */
+          text-align: center;
+        }
+
+        .sidebar {
+          width: 80%;
+          max-width: 300px;
+          transform: translateX(-100%);
+          transition: transform 0.3s ease-in-out;
+          background-color: #f4f7f6;
+          border-right: solid 1px #777b7e;
+          z-index: 1500; /* Make sure sidebar appears below the burger icon layer */
+        }
+
+        .sidebar.active {
+          transform: translateX(0); /* Bring the sidebar into view */
+        }
+
+        .main-content {
+          margin-top: 5%; /* Push down content below the fixed header */
+          margin-left: 0; /* Reset margin since sidebar is not fixed on mobile */
+        }
+      }
     </style>
   </head>
   <body>
     <div class="header">
+      <div class="burger" onclick="toggleSidebar()">
+        <div></div>
+        <div></div>
+        <div></div>
+      </div>
+
       <div class="logo" onclick="location.reload()" style="cursor: pointer">
         zkSync Farm Dashboard
       </div>
@@ -111,8 +183,8 @@
       function createMetricElement(title, value, valueClass = "") {
         return `
         <div class="metric">
-          <div class="metric-title">${title}</div>
-          <div class="metric-value ${valueClass}">${value}</div>
+          <div class="metric-title" style="font-size:0.9rem;color:#777b7e">${title}</div>
+          <div class="metric-value ${valueClass}" style="font-size:1.1rem">${value}</div>
         </div>
       `;
       }
@@ -148,7 +220,7 @@
         const walletData = await getWalletData(walletAddress);
 
         updateMainContent(`
-                <h2>Metrics for ${walletAddress}</h2>
+                <h3>Metrics for ${walletAddress}</h3>
                 ${createMetricElement("Active Since", walletData.activeSince)}
                 ${createMetricElement("Last Active", walletData.lastActive)}
         ${createMetricElement(
@@ -313,7 +385,10 @@
           const walletElement = document.createElement("div");
           walletElement.classList.add("wallet");
           walletElement.textContent = wallet;
-          walletElement.onclick = async () => await showWalletMetrics(wallet);
+          walletElement.onclick = async () => {
+            await showWalletMetrics(wallet);
+            toggleSidebar();
+          };
           walletListElement.appendChild(walletElement);
         });
 
@@ -334,6 +409,11 @@
         });
 
         showOverallMetrics();
+      }
+
+      function toggleSidebar() {
+        const sidebar = document.getElementById("walletList");
+        sidebar.classList.toggle("active");
       }
 
       init();
