@@ -53,6 +53,9 @@
       }
 
       .wallet {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
         cursor: pointer;
         padding: 10px;
         margin-bottom: 10px;
@@ -65,6 +68,31 @@
       .wallet:hover {
         background-color: #c1c1c1;
       }
+      .state-label {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 1rem;
+        font-size: 0.75rem;
+        font-weight: bold;
+        margin-left: 0.5rem;
+        white-space: nowrap; /* Prevent text from wrapping */
+      }
+
+      .active {
+        color: green;
+        border: 1px solid green;
+      }
+
+      .inactive {
+        color: grey;
+        border: 1px solid grey;
+      }
+
+      .wallet.inactive-wallet {
+        pointer-events: none; /* Disable pointer events like click */
+        opacity: 0.6; /* Optional: reduce opacity to indicate disabled state */
+      }
+
       .metric {
         background-color: #fff;
         padding: 15px;
@@ -381,7 +409,7 @@
       // Update your init function to include the calculation for the transaction count
       async function init() {
         const walletListElement = document.getElementById("walletList");
-        wallets.forEach((wallet) => {
+        for (const wallet of wallets) {
           const walletElement = document.createElement("div");
           walletElement.classList.add("wallet");
           walletElement.textContent = wallet;
@@ -389,8 +417,23 @@
             await showWalletMetrics(wallet);
             toggleSidebar();
           };
+
+          const isActive = await isWalletActive(wallet);
+          const stateLabel = document.createElement("span");
+          stateLabel.classList.add(
+            "state-label",
+            isActive ? "active" : "inactive"
+          );
+          stateLabel.textContent = isActive ? "Active" : "Inactive";
+          walletElement.appendChild(stateLabel);
+
+          if (!isActive) {
+            walletElement.classList.add("inactive-wallet");
+            walletElement.onclick = null; // Disable onclick for inactive wallets
+          }
+
           walletListElement.appendChild(walletElement);
-        });
+        }
 
         // Calculate the total volume and update the UI accordingly
         calculateFarmData(wallets).then((farmData) => {
@@ -414,6 +457,16 @@
       function toggleSidebar() {
         const sidebar = document.getElementById("walletList");
         sidebar.classList.toggle("active");
+      }
+
+      async function isWalletActive(walletAddress) {
+        // Fetch the first page of transactions and check if any are from the wallet
+        const url = `https://block-explorer-api.mainnet.zksync.io/api?module=account&action=txlist&page=1&offset=100&sort=asc&endblock=99999999&startblock=0&address=${walletAddress}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        return data.result.some(
+          (tx) => tx.from.toLowerCase() === walletAddress.toLowerCase()
+        );
       }
 
       init();
